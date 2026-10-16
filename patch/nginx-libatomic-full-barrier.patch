@@ -1,0 +1,25 @@
+With --with-libatomic, nginx maps its atomic operations to libatomic_ops. The plain AO_compare_and_swap,
+AO_fetch_and_add and AO_nop have no memory ordering: on aarch64 they are relaxed, and AO_nop does nothing.
+ngx_shmtx_lock() and ngx_shmtx_unlock() then do not order the accesses of the critical section, and two
+workers can lose updates of shared-memory data (for example, the count of a limit_req node). The _full
+variants give the ordering that the lock needs. Builds without --with-libatomic use the GCC __sync builtins,
+which are full barriers, and do not change.
+
+Tested against nginx 1.30.5 and libatomic_ops 7.6.14.
+
+--- a/src/os/unix/ngx_atomic.h
++++ b/src/os/unix/ngx_atomic.h
+@@ -31,10 +31,10 @@ typedef volatile ngx_atomic_uint_t  ngx_atomic_t;
+ #endif
+
+ #define ngx_atomic_cmp_set(lock, old, new)                                    \
+-    AO_compare_and_swap(lock, old, new)
++    AO_compare_and_swap_full(lock, old, new)
+ #define ngx_atomic_fetch_add(value, add)                                      \
+-    AO_fetch_and_add(value, add)
+-#define ngx_memory_barrier()        AO_nop()
++    AO_fetch_and_add_full(value, add)
++#define ngx_memory_barrier()        AO_nop_full()
+ #define ngx_cpu_pause()
+
+
